@@ -530,9 +530,9 @@ function showToast(message, kind = '') {
 let credsCache = null;
 
 async function loadCreds() {
-  if (credsCache) return credsCache;
+  if (credsCache && credsCache.ciphertext) return credsCache;
   try {
-    const res = await fetch('creds.json', { cache: 'no-store' });
+    const res = await fetch('creds.json?v=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) throw new Error('creds.json not found');
     credsCache = await res.json();
     return credsCache;
