@@ -348,12 +348,19 @@ async function processBatch() {
   const queue = [...targets];
   let active = 0;
   let completed = 0;
+  const startedAt = performance.now();
 
   return new Promise((resolve) => {
     const next = () => {
       if (queue.length === 0 && active === 0) {
+        const elapsedMs = performance.now() - startedAt;
         refreshUi();
-        showToast(`處理完成：${completed} / ${targets.length}`, completed === targets.length ? 'success' : 'error');
+        const kind = completed === targets.length ? 'success' : 'error';
+        showToast(
+          `處理完成：${completed} / ${targets.length} · 總耗時 ${formatDuration(elapsedMs)}`,
+          kind,
+          4500
+        );
         resolve();
         return;
       }
@@ -518,12 +525,21 @@ window.addEventListener('touchend', onDragEnd);
 
 /* ---------- Toast ---------- */
 let toastTimer = null;
-function showToast(message, kind = '') {
+function showToast(message, kind = '', duration = 2400) {
   toast.textContent = message;
   toast.className = `toast ${kind}`;
   toast.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add('hidden'), 2400);
+  toastTimer = setTimeout(() => toast.classList.add('hidden'), duration);
+}
+
+function formatDuration(ms) {
+  if (ms < 1000) return `${Math.round(ms)} 毫秒`;
+  const totalSec = ms / 1000;
+  if (totalSec < 60) return `${totalSec.toFixed(1)} 秒`;
+  const m = Math.floor(totalSec / 60);
+  const s = Math.round(totalSec - m * 60);
+  return `${m} 分 ${s} 秒`;
 }
 
 /* ---------- Auth / Login ---------- */
