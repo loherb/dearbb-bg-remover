@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>一次性設定 · 批次照片去背</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .setup-wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .setup-wrap h2 { margin: 0; font-size: 20px; }
+    .setup-wrap p, .setup-wrap li { color: var(--text); }
+    .setup-wrap .muted { color: var(--text-muted); }
+    .setup-wrap pre, .setup-wrap code {
+      background: #1f2228;
+      color: #e8eaed;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .setup-wrap code { padding: 2px 6px; }
+    .setup-wrap form { display: flex; flex-direction: column; gap: 14px; }
+    .setup-wrap form label { font-weight: 500; }
+    .setup-wrap textarea#output {
+      width: 100%;
+      min-height: 220px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+    }
+    .setup-wrap .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pw-meter {
+      height: 4px;
+      background: #e6e8ec;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .pw-meter > div {
+      height: 100%;
+      width: 0;
+      transition: width 0.2s, background 0.2s;
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-wrap">
+    <header class="brand">
+      <span class="logo-dot"></span>
+      <h2>一次性設定</h2>
+    </header>
+
+    <div class="card">
+      <p><strong>這個頁面在你的瀏覽器本地加密 API Key。</strong> 過程中你的 key 和密碼<strong>都不會傳到任何 server</strong>——你可以開瀏覽器的 Network 分頁確認，這頁不會發任何 request。</p>
+      <p class="muted">完成後會產生一段加密後的密文（<code>creds.json</code>），把它放到 <code>public/creds.json</code> 後重新部署網站即可。</p>
+    </div>
+
+    <div class="card">
+      <form id="setupForm">
+        <label>
+          OpenAI API Key
+          <input type="password" id="apiKey" required placeholder="sk-..." autocomplete="off" />
+          <span class="hint muted">輸入後<strong>不會</strong>離開這個瀏覽器</span>
+        </label>
+
+        <label>
+          設定登入密碼
+          <input type="password" id="password" required minlength="12" autocomplete="new-password" />
+          <span class="hint muted">至少 12 字，建議用密碼管理員產 16+ 字的隨機密碼</span>
+          <div class="pw-meter"><div id="pwMeter"></div></div>
+        </label>
+
+        <label>
+          再輸入一次密碼
+          <input type="password" id="passwordConfirm" required minlength="12" autocomplete="new-password" />
+        </label>
+
+        <button type="submit" class="primary-btn" id="generateBtn">產生加密檔</button>
+      </form>
+    </div>
+
+    <div id="resultCard" class="card" hidden>
+      <h3 style="margin-top:0">✅ 加密完成</h3>
+      <p>把下面這段內容存成 <code>public/creds.json</code>（取代現有的）：</p>
+      <textarea id="output" readonly></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="copyBtn" class="ghost-btn" type="button">📋 複製</button>
+        <button id="downloadBtn" class="ghost-btn" type="button">⬇️ 下載 creds.json</button>
+      </div>
+
+      <h4 style="margin-top:24px">怎麼讓網站生效</h4>
+      <p>下載 <code>creds.json</code> 後，本地端跑：</p>
+      <pre>cd /Users/jenniehuang/Claude/bg-remover
+mv ~/Downloads/creds.json public/creds.json
+git add public/creds.json && git commit -m "Update encrypted credentials" && git push
+firebase deploy --only hosting</pre>
+      <p class="muted">或直接把密文貼給 Claude，讓 Claude 幫你部署。</p>
+
+      <p style="margin-top:16px"><strong>之後就可以到 <a href="/">首頁</a> 用 <code>hello@dearbb.design</code> + 你剛設的密碼登入。</strong></p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="auth.js"></script>
+  <script>
+    const pw = document.getElementById('password');
+    const meter = document.getElementById('pwMeter');
+    pw.addEventListener('input', () => {
+      const v = pw.value;
+      let score = 0;
+      if (v.length >= 12) score++;
+      if (v.length >= 16) score++;
+      if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
+      if (/\d/.test(v)) score++;
+      if (/[^A-Za-z0-9]/.test(v)) score++;
+      const colors = ['#ef4444', '#f59e0b', '#f59e0b', '#10b981', '#10b981', '#10b981'];
+      meter.style.width = (score / 5 * 100) + '%';
+      meter.style.background = colors[score];
+    });
+
+    document.getElementById('setupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('passwordConfirm').value;
+      if (!apiKey.startsWith('sk-')) { alert('API Key 看起來不對（應該以 sk- 開頭）'); return; }
+      if (password !== confirm) { alert('兩次密碼不一致'); return; }
+      if (password.length < 12) { alert('密碼太短，至少 12 字'); return; }
+
+      const btn = document.getElementById('generateBtn');
+      btn.disabled = true;
+      btn.textContent = '加密中…（約 1-2 秒）';
+      try {
+        const encrypted = await encryptSecret(apiKey, password);
+        const creds = {
+          username: 'hello@dearbb.design',
+          ...encrypted,
+        };
+        document.getElementById('output').value = JSON.stringify(creds, null, 2);
+        document.getElementById('resultCard').hidden = false;
+        document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        alert('加密失敗：' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '產生加密檔';
+      }
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', async () => {
+      const txt = document.getElementById('output').value;
+      try {
+        await navigator.clipboard.writeText(txt);
+        showToast('已複製到剪貼簿', 'success');
+      } catch {
+        document.getElementById('output').select();
+        document.execCommand('copy');
+        showToast('已複製', 'success');
+      }
+    });
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const txt = document.getElementById('output').value;
+      const blob = new Blob([txt], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'creds.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function showToast(message, kind = '') {
+      toast.textContent = message;
+      toast.className = `toast ${kind}`;
+      toast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.add('hidden'), 2000);
+    }
+  </script>
+</body>
+</html>

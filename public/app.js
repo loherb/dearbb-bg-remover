@@ -1,11 +1,10 @@
 /* ============================================================
  * 批次照片去背 · 主要邏輯
- * - 使用 OpenAI gpt-image-1 (/v1/images/edits) 進行去背
- * - API Key 僅儲存於 localStorage，由瀏覽器直接呼叫 OpenAI
+ * - 使用 OpenAI gpt-image-1 / gpt-image-2 (/v1/images/edits) 進行去背
+ * - API Key 加密儲存在 creds.json，登入後解密到 sessionStorage
  * ============================================================ */
 
 const STORAGE_KEYS = {
-  apiKey: 'bg_remover_api_key',
   model: 'bg_remover_model',
   prompt: 'bg_remover_prompt',
   size: 'bg_remover_size',
@@ -29,8 +28,15 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const settingsPanel = $('settingsPanel');
 const settingsToggle = $('settingsToggle');
-const apiKeyInput = $('apiKey');
-const toggleKeyBtn = $('toggleKey');
+const logoutBtn = $('logoutBtn');
+const loggedInAs = $('loggedInAs');
+const loginOverlay = $('loginOverlay');
+const loginForm = $('loginForm');
+const loginUsername = $('loginUsername');
+const loginPassword = $('loginPassword');
+const loginSubmit = $('loginSubmit');
+const loginError = $('loginError');
+const loginSetupHint = $('loginSetupHint');
 const modelSelect = $('model');
 const modelHint = $('modelHint');
 const promptInput = $('prompt');
@@ -61,7 +67,6 @@ const toast = $('toast');
 
 /* ---------- Settings persistence ---------- */
 function loadSettings() {
-  apiKeyInput.value = localStorage.getItem(STORAGE_KEYS.apiKey) || '';
   modelSelect.value = localStorage.getItem(STORAGE_KEYS.model) || 'gpt-image-2';
   promptInput.value =
     localStorage.getItem(STORAGE_KEYS.prompt) || DEFAULT_PROMPTS[modelSelect.value];
@@ -84,7 +89,6 @@ function saveSetting(key, value) {
   localStorage.setItem(key, value);
 }
 
-apiKeyInput.addEventListener('change', (e) => saveSetting(STORAGE_KEYS.apiKey, e.target.value.trim()));
 modelSelect.addEventListener('change', (e) => {
   saveSetting(STORAGE_KEYS.model, e.target.value);
   updateModelHint();
@@ -101,12 +105,6 @@ qualitySelect.addEventListener('change', (e) => saveSetting(STORAGE_KEYS.quality
 concurrencySelect.addEventListener('change', (e) => saveSetting(STORAGE_KEYS.concurrency, e.target.value));
 
 settingsToggle.addEventListener('click', () => settingsPanel.classList.toggle('hidden'));
-
-toggleKeyBtn.addEventListener('click', () => {
-  const isHidden = apiKeyInput.type === 'password';
-  apiKeyInput.type = isHidden ? 'text' : 'password';
-  toggleKeyBtn.textContent = isHidden ? '隱藏' : '顯示';
-});
 
 /* ---------- File upload ---------- */
 browseBtn.addEventListener('click', (e) => {
@@ -284,8 +282,8 @@ clearBtn.addEventListener('click', () => {
 
 /* ---------- OpenAI call ---------- */
 async function callOpenAI(file) {
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) throw new Error('請先填入 OpenAI API Key');
+  const apiKey = getSessionApiKey();
+  if (!apiKey) throw new Error('登入已過期，請重新登入');
 
   const model = modelSelect.value || 'gpt-image-2';
   const formData = new FormData();
@@ -336,11 +334,9 @@ function base64ToBlob(b64, type) {
 processBtn.addEventListener('click', () => processBatch());
 
 async function processBatch() {
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
-    showToast('請先填入 OpenAI API Key', 'error');
-    settingsPanel.classList.remove('hidden');
-    apiKeyInput.focus();
+  if (!getSessionApiKey()) {
+    showToast('登入已過期，請重新登入', 'error');
+    showLogin();
     return;
   }
 
@@ -530,6 +526,110 @@ function showToast(message, kind = '') {
   toastTimer = setTimeout(() => toast.classList.add('hidden'), 2400);
 }
 
+/* ---------- Auth / Login ---------- */
+let credsCache = null;
+
+async function loadCreds() {
+  if (credsCache) return credsCache;
+  try {
+    const res = await fetch('creds.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('creds.json not found');
+    credsCache = await res.json();
+    return credsCache;
+  } catch (err) {
+    return null;
+  }
+}
+
+function showLogin() {
+  loginOverlay.classList.remove('hidden');
+  loginError.classList.add('hidden');
+  loginPassword.value = '';
+  setTimeout(() => loginPassword.focus(), 50);
+}
+
+function hideLogin() {
+  loginOverlay.classList.add('hidden');
+}
+
+function setLoggedInUi(username) {
+  loggedInAs.textContent = username;
+  loggedInAs.classList.remove('hidden');
+  logoutBtn.classList.remove('hidden');
+}
+
+function showLoginError(message) {
+  loginError.textContent = message;
+  loginError.classList.remove('hidden');
+}
+
+async function tryLogin(username, password) {
+  const creds = await loadCreds();
+  if (!creds || !creds.ciphertext) {
+    loginSetupHint.classList.remove('hidden');
+    throw new Error('尚未完成初始設定');
+  }
+  const expected = (creds.username || '').toLowerCase().trim();
+  if (username.toLowerCase().trim() !== expected) {
+    throw new Error('帳號或密碼錯誤');
+  }
+  let apiKey;
+  try {
+    apiKey = await decryptSecret(creds, password);
+  } catch {
+    throw new Error('帳號或密碼錯誤');
+  }
+  if (!apiKey || !apiKey.startsWith('sk-')) {
+    throw new Error('解密成功但 key 格式異常');
+  }
+  setSessionApiKey(apiKey);
+  return creds.username;
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  loginError.classList.add('hidden');
+  loginSubmit.disabled = true;
+  const originalText = loginSubmit.textContent;
+  loginSubmit.textContent = '驗證中…';
+  try {
+    const username = await tryLogin(loginUsername.value, loginPassword.value);
+    setLoggedInUi(username);
+    hideLogin();
+    loginPassword.value = '';
+  } catch (err) {
+    showLoginError(err.message || '登入失敗');
+  } finally {
+    loginSubmit.disabled = false;
+    loginSubmit.textContent = originalText;
+  }
+});
+
+logoutBtn.addEventListener('click', () => {
+  clearSessionApiKey();
+  loggedInAs.classList.add('hidden');
+  logoutBtn.classList.add('hidden');
+  showLogin();
+});
+
 /* ---------- Init ---------- */
 loadSettings();
 refreshUi();
+
+(async () => {
+  const creds = await loadCreds();
+  const sessionKey = getSessionApiKey();
+  if (sessionKey && creds && creds.username) {
+    setLoggedInUi(creds.username);
+    hideLogin();
+  } else {
+    if (!creds || !creds.ciphertext) {
+      loginSetupHint.classList.remove('hidden');
+    }
+    showLogin();
+    if (creds && creds.username) {
+      loginUsername.value = creds.username;
+      setTimeout(() => loginPassword.focus(), 50);
+    }
+  }
+})();

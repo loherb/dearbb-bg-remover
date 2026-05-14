@@ -52,6 +52,92 @@ button { font-family: inherit; }
   gap: 12px;
 }
 
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-right .muted { font-size: 12px; }
+
+/* Login overlay */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: linear-gradient(180deg, #f6f7f9 0%, #eceef3 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-overlay.hidden { display: none; }
+
+.login-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-lg);
+}
+
+.login-form .brand {
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.login-form .brand h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.login-form > p { margin: 0; font-size: 13px; }
+
+.login-form label {
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-form button[type="submit"] {
+  width: 100%;
+  justify-content: center;
+  padding: 11px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.login-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin: 0;
+}
+
+.login-error.hidden,
+#loggedInAs.hidden,
+#logoutBtn.hidden,
+#loginSetupHint.hidden { display: none; }
+
+#loggedInAs {
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
 .brand h1 {
   margin: 0;
   font-size: 16px;
@@ -595,7 +681,12 @@ button.link-btn {
 }
 
 @media (max-width: 720px) {
-  .topbar { padding: 12px 16px; }
+  .topbar { padding: 12px 14px; gap: 8px; }
+  .topbar-right { gap: 6px; }
+  .topbar-right .ghost-btn { padding: 7px 10px; font-size: 12px; }
+  .topbar-right .ghost-btn svg { display: none; }
+  #loggedInAs { display: none !important; }
+  .brand h1 { font-size: 15px; }
   .container { padding: 16px; }
   .settings .field-row { grid-template-columns: 1fr; }
   .action-bar { flex-direction: column; align-items: stretch; }
