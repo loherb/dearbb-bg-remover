@@ -181,12 +181,15 @@ function updateCardStatus(item) {
   if (!card) return;
   const overlay = card.querySelector('.status-overlay');
   const label = card.querySelector('.status-label');
+  const elapsedEl = card.querySelector('.elapsed');
   const compareBtn = card.querySelector('.compare-btn');
   const downloadBtn = card.querySelector('.download-btn');
   const thumbImg = card.querySelector('.thumb-img');
 
   label.className = 'status-label';
   overlay.classList.remove('hidden');
+
+  elapsedEl.textContent = item.processedMs != null ? formatDuration(item.processedMs) : '';
 
   switch (item.status) {
     case 'pending':
@@ -368,6 +371,8 @@ async function processBatch() {
         const item = queue.shift();
         active++;
         item.status = 'processing';
+        item.processedMs = null;
+        const itemStartedAt = performance.now();
         updateCardStatus(item);
         refreshUi();
         callOpenAI(item.file)
@@ -385,6 +390,7 @@ async function processBatch() {
             console.error('處理失敗', item.name, err);
           })
           .finally(() => {
+            item.processedMs = performance.now() - itemStartedAt;
             active--;
             updateCardStatus(item);
             refreshUi();

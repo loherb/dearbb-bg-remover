@@ -396,6 +396,18 @@ button.link-btn {
   text-overflow: ellipsis;
 }
 
+.photo-card-head .elapsed {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.photo-card-head .elapsed:empty { display: none; }
+
 .icon-btn {
   background: none;
   border: none;
