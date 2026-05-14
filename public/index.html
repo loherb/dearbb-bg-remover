@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>批次照片去背 · GPT Image</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo-dot"></span>
+      <h1>批次照片去背</h1>
+      <span class="brand-sub">GPT Image · Background Remover</span>
+    </div>
+    <button id="settingsToggle" class="ghost-btn" aria-label="設定">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      設定
+    </button>
+  </header>
+
+  <main class="container">
+    <section id="settingsPanel" class="card settings hidden">
+      <div class="field">
+        <label for="apiKey">
+          OpenAI API Key
+          <span class="hint">儲存在你的瀏覽器（localStorage），不會送到任何其他伺服器</span>
+        </label>
+        <div class="input-row">
+          <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+          <button id="toggleKey" class="ghost-btn" type="button">顯示</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="model">
+          模型
+          <span class="hint" id="modelHint">gpt-image-2：品質較好但不支援透明背景；gpt-image-1：可輸出真正透明 PNG</span>
+        </label>
+        <select id="model">
+          <option value="gpt-image-2">gpt-image-2（最新，輸出白底）</option>
+          <option value="gpt-image-1">gpt-image-1（可輸出透明背景）</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="prompt">
+          Prompt
+          <span class="hint">送給模型的指令，可自由修改</span>
+        </label>
+        <textarea id="prompt" rows="3">Isolate the main subject from the photo. Place it cleanly centered against a pure white (#FFFFFF) background with no shadow. Preserve precise edges, hair, and fine details. Do not alter the subject itself.</textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="size">輸出尺寸</label>
+          <select id="size">
+            <option value="auto" selected>自動</option>
+            <option value="1024x1024">1024 × 1024</option>
+            <option value="1024x1536">1024 × 1536（直）</option>
+            <option value="1536x1024">1536 × 1024（橫）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="quality">品質</label>
+          <select id="quality">
+            <option value="low">低 (快、便宜)</option>
+            <option value="medium" selected>中</option>
+            <option value="high">高</option>
+            <option value="auto">自動</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="concurrency">同時處理數</label>
+          <select id="concurrency">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section id="dropzone" class="dropzone">
+      <input type="file" id="fileInput" accept="image/*" multiple hidden />
+      <div class="dropzone-inner">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <p><strong>拖曳照片到這裡</strong> 或 <button id="browseBtn" class="link-btn">點此選擇檔案</button></p>
+        <p class="muted">支援 PNG / JPG / WEBP，可一次上傳多張</p>
+      </div>
+    </section>
+
+    <section class="action-bar">
+      <div class="left">
+        <label class="checkbox">
+          <input type="checkbox" id="selectAll" />
+          <span>全選</span>
+        </label>
+        <span class="counter" id="counter">0 張照片</span>
+      </div>
+      <div class="right">
+        <button id="clearBtn" class="ghost-btn" type="button">清空</button>
+        <button id="processBtn" class="primary-btn" type="button" disabled>開始去背</button>
+        <button id="downloadSelectedBtn" class="ghost-btn" type="button" disabled>下載選取</button>
+        <button id="downloadZipBtn" class="primary-btn outline" type="button" disabled>下載全部 ZIP</button>
+      </div>
+    </section>
+
+    <section id="grid" class="grid"></section>
+
+    <div id="emptyState" class="empty">
+      <p>還沒有照片，先上傳幾張試試 👆</p>
+    </div>
+  </main>
+
+  <!-- Modal: before/after compare -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-body">
+      <button class="modal-close" data-close aria-label="關閉">×</button>
+      <h3 id="modalTitle">前後對比</h3>
+      <div class="compare" id="compare">
+        <div class="compare-pane">
+          <img id="beforeImg" alt="原圖" />
+        </div>
+        <div class="compare-pane after" id="afterPane">
+          <img id="afterImg" alt="去背後" />
+        </div>
+        <div class="compare-handle" id="compareHandle">
+          <span></span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" data-close type="button">關閉</button>
+        <button id="modalDownload" class="primary-btn" type="button">下載這張 PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="cardTemplate">
+    <article class="photo-card" data-id="">
+      <header class="photo-card-head">
+        <label class="checkbox">
+          <input type="checkbox" class="select-one" />
+          <span></span>
+        </label>
+        <span class="filename"></span>
+        <button class="icon-btn remove" title="移除">×</button>
+      </header>
+      <div class="thumb checker">
+        <img class="thumb-img" alt="" />
+        <div class="status-overlay">
+          <span class="status-label">待處理</span>
+        </div>
+      </div>
+      <footer class="photo-card-foot">
+        <button class="ghost-btn compare-btn" disabled>對比</button>
+        <button class="primary-btn download-btn" disabled>下載</button>
+      </footer>
+    </article>
+  </template>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
